@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Bards Companion</string>
+    <string name="add_song">Add Song</string>
+    <string name="edit_song">Edit Song</string>
+    <string name="author">Author</string>
+    <string name="song_name">Song Name</string>
+    <string name="lyrics">Lyrics</string>
+    <string name="save">Save</string>
+    <string name="delete">Delete</string>
+    <string name="cancel">Cancel</string>
+    <string name="start_performance">Start Performance</string>
+    <string name="stop_server">Stop Server</string>
+    <string name="server_running">Server is running on:</string>
+    <string name="enable_hotspot">Enable Hotspot</string>
+    <string name="select_song">Select a song to perform</string>
+    <string name="finish_song">Finish Song</string>
+    <string name="no_songs">No songs found. Add some songs first!</string>
+    <string name="song_deleted">Song deleted</string>
+    <string name="song_saved">Song saved</string>
+    <string name="fill_all_fields">Please fill all fields</string>
+    <string name="server_error">Failed to start server</string>
+    <string name="hotspot_settings">Hotspot Settings</string>
+    <string name="share_ip">Share this IP with your friends:</string>
+</resources>

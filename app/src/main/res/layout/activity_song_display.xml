@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp"
+    tools:context=".SongDisplayActivity">
+
+    <ScrollView
+        android:id="@+id/scrollView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginBottom="16dp"
+        app:layout_constraintBottom_toTopOf="@+id/finishSongButton"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/displaySongNameText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Song Name"
+                android:textSize="32sp"
+                android:textStyle="bold"
+                android:textAlignment="center"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:id="@+id/displayAuthorText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="by Author"
+                android:textSize="20sp"
+                android:textColor="@android:color/darker_gray"
+                android:textAlignment="center"
+                android:layout_marginBottom="32dp" />
+
+            <TextView
+                android:id="@+id/displayLyricsText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Lyrics will appear here"
+                android:textSize="18sp"
+                android:lineSpacingExtra="8dp"
+                android:textIsSelectable="true"
+                android:background="@android:color/transparent" />
+
+        </LinearLayout>
+
+    </ScrollView>
+
+    <Button
+        android:id="@+id/finishSongButton"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="@string/finish_song"
+        android:backgroundTint="@android:color/holo_red_dark"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>
