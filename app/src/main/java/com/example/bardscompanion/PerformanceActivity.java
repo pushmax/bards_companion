@@ -5,13 +5,17 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.cardview.widget.CardView;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Map;
 
 public class PerformanceActivity extends AppCompatActivity implements PerformanceSongAdapter.OnSongSelectListener {
     private SimpleHttpServer httpServer;
@@ -20,10 +24,21 @@ public class PerformanceActivity extends AppCompatActivity implements Performanc
     private TextView serverStatusText;
     private Button openHotspotSettingsButton;
     private Button stopServerButton;
+    private Button selectSongButton;
+    private Button closeSongListButton;
+    private View overlayBackground;
+    private androidx.cardview.widget.CardView songListOverlay;
     private RecyclerView performanceSongsRecyclerView;
     private PerformanceSongAdapter performanceSongAdapter;
     private Handler handler;
     private Runnable ipUpdateRunnable;
+    
+    // Voting display components
+    private CardView votingInfoCard;
+    private TextView votingStatusText;
+    private RecyclerView votingRecyclerView;
+    private VotingResultAdapter votingResultAdapter;
+    private Runnable votingUpdateRunnable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -34,9 +49,11 @@ public class PerformanceActivity extends AppCompatActivity implements Performanc
         setupDatabase();
         setupServer();
         setupRecyclerView();
+        setupVotingDisplay();
         setupClickListeners();
         loadSongs();
         startIpUpdates();
+        startVotingUpdates();
     }
 
     private void initViews() {
@@ -44,7 +61,16 @@ public class PerformanceActivity extends AppCompatActivity implements Performanc
         serverStatusText = findViewById(R.id.serverStatusText);
         openHotspotSettingsButton = findViewById(R.id.openHotspotSettingsButton);
         stopServerButton = findViewById(R.id.stopServerButton);
+        selectSongButton = findViewById(R.id.selectSongButton);
+        closeSongListButton = findViewById(R.id.closeSongListButton);
+        overlayBackground = findViewById(R.id.overlayBackground);
+        songListOverlay = findViewById(R.id.songListOverlay);
         performanceSongsRecyclerView = findViewById(R.id.performanceSongsRecyclerView);
+        
+        // Voting display views
+        votingInfoCard = findViewById(R.id.votingInfoCard);
+        votingStatusText = findViewById(R.id.votingStatusText);
+        votingRecyclerView = findViewById(R.id.votingRecyclerView);
     }
 
     private void setupDatabase() {
@@ -69,6 +95,12 @@ public class PerformanceActivity extends AppCompatActivity implements Performanc
         performanceSongsRecyclerView.setAdapter(performanceSongAdapter);
     }
 
+    private void setupVotingDisplay() {
+        votingRecyclerView.setLayoutManager(new LinearLayoutManager(this));
+        votingResultAdapter = new VotingResultAdapter();
+        votingRecyclerView.setAdapter(votingResultAdapter);
+    }
+
     private void setupClickListeners() {
         openHotspotSettingsButton.setOnClickListener(v -> {
             try {
@@ -86,6 +118,12 @@ public class PerformanceActivity extends AppCompatActivity implements Performanc
             stopServer();
             finish();
         });
+
+        selectSongButton.setOnClickListener(v -> showSongListOverlay());
+
+        closeSongListButton.setOnClickListener(v -> hideSongListOverlay());
+
+        overlayBackground.setOnClickListener(v -> hideSongListOverlay());
     }
 
     private void loadSongs() {
@@ -119,8 +157,68 @@ public class PerformanceActivity extends AppCompatActivity implements Performanc
         }
     }
 
+    private void startVotingUpdates() {
+        votingUpdateRunnable = new Runnable() {
+            @Override
+            public void run() {
+                updateVotingDisplay();
+                handler.postDelayed(this, 3000); // Update every 3 seconds
+            }
+        };
+        handler.post(votingUpdateRunnable);
+    }
+
+    private void stopVotingUpdates() {
+        if (handler != null && votingUpdateRunnable != null) {
+            handler.removeCallbacks(votingUpdateRunnable);
+        }
+    }
+
+    private void updateVotingDisplay() {
+        if (httpServer != null) {
+            Map<Long, Integer> votingResults = httpServer.getVoteCountsForDisplay();
+            if (votingResults.isEmpty()) {
+                votingInfoCard.setVisibility(android.view.View.GONE);
+                votingStatusText.setText("No votes yet");
+            } else {
+                votingInfoCard.setVisibility(android.view.View.VISIBLE);
+                List<VotingResultAdapter.VotingResult> results = new ArrayList<>();
+                
+                for (Map.Entry<Long, Integer> entry : votingResults.entrySet()) {
+                    Song song = databaseHelper.getSongById(entry.getKey());
+                    if (song != null) {
+                        results.add(new VotingResultAdapter.VotingResult(song, entry.getValue()));
+                    }
+                }
+                
+                // Sort by vote count descending
+                results.sort((a, b) -> Integer.compare(b.voteCount, a.voteCount));
+                
+                votingResultAdapter.updateVotingResults(results);
+                
+                if (results.size() == 1) {
+                    votingStatusText.setText("1 vote received");
+                } else {
+                    votingStatusText.setText(results.size() + " votes received");
+                }
+            }
+        }
+    }
+
+    private void showSongListOverlay() {
+        overlayBackground.setVisibility(android.view.View.VISIBLE);
+        songListOverlay.setVisibility(android.view.View.VISIBLE);
+    }
+
+    private void hideSongListOverlay() {
+        overlayBackground.setVisibility(android.view.View.GONE);
+        songListOverlay.setVisibility(android.view.View.GONE);
+    }
+
     @Override
     public void onSongSelected(Song song) {
+        hideSongListOverlay(); // Hide overlay when song is selected
+        
         if (httpServer != null) {
             httpServer.setCurrentSong(song);
         }
@@ -137,6 +235,7 @@ public class PerformanceActivity extends AppCompatActivity implements Performanc
             httpServer = null;
         }
         stopIpUpdates();
+        stopVotingUpdates();
     }
 
     @Override
@@ -147,7 +246,11 @@ public class PerformanceActivity extends AppCompatActivity implements Performanc
 
     @Override
     public void onBackPressed() {
-        stopServer();
-        super.onBackPressed();
+        if (songListOverlay.getVisibility() == android.view.View.VISIBLE) {
+            hideSongListOverlay();
+        } else {
+            stopServer();
+            super.onBackPressed();
+        }
     }
 }

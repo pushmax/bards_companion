@@ -91,6 +91,25 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         return songList;
     }
 
+    public Song getSongById(long id) {
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.query(TABLE_SONGS, null, COLUMN_ID + "=?",
+                new String[]{String.valueOf(id)}, null, null, null);
+        
+        Song song = null;
+        if (cursor.moveToFirst()) {
+            song = new Song(
+                cursor.getLong(cursor.getColumnIndexOrThrow(COLUMN_ID)),
+                cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_AUTHOR)),
+                cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_NAME)),
+                cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_LYRICS))
+            );
+        }
+        cursor.close();
+        db.close();
+        return song;
+    }
+
     public int updateSong(Song song) {
         SQLiteDatabase db = this.getWritableDatabase();
         ContentValues values = new ContentValues();
@@ -108,5 +127,71 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         SQLiteDatabase db = this.getWritableDatabase();
         db.delete(TABLE_SONGS, COLUMN_ID + "=?", new String[]{String.valueOf(id)});
         db.close();
+    }
+
+    public void prepopulateIfEmpty() {
+        List<Song> existingSongs = getAllSongs();
+        if (existingSongs.isEmpty()) {
+            // Prepopulate with sample songs (lyrics are intentionally left empty)
+            String[][] sampleSongs = {
+                {"Daft Punk", "Get lucky"},
+                {"Foster the people", "Pumped up kicks"},
+                {"Ricky Martin", "La vida loca"},
+                {"Robin Shultz", "Sugar"},
+                {"Imagine Dragons", "Radioactive"},
+                {"Oasis", "Wonderwall"},
+                {"Pretty Reckless", "You make me wanna die"},
+                {"Theory of a Deadman", "Angel"},
+                {"Nirvana", "Come as you are"},
+                {"Nirvana", "Smells like teen spirit"},
+                {"Green day", "Wake me up when September ends"},
+                {"Depeche mode", "Personal Jesus"},
+                {"Nickelback", "How you remind me"},
+                {"Nickelback", "If everyone cared"},
+                {"Metallica", "Fade to black"},
+                {"Metallica", "Unforgiven"},
+                {"Limp Bizkit", "Behind blue eyes"},
+                {"Green day", "Boulevard of broken dreams"},
+                {"Sunrise avenue", "Fairytale gone bad"},
+                {"Aerosmith", "Dream on"},
+                {"Scorpions", "Still loving you"},
+                {"Sting", "Shape of my heart"},
+                {"Cranberries", "Zombie"},
+                {"Poets of the fall", "Carnival of Rust"},
+                {"Slipknot", "Snuff"},
+                {"Slipknot", "Dead memories"},
+                {"Stone Sour", "Through glass"},
+                {"Depeche mode", "Precious"},
+                {"Megadeth", "A tout le monde"},
+                {"RHCP", "Otherside"},
+                {"RHCP", "Californication"},
+                {"Браво", "Я то что надо"},
+                {"Звери", "Рома извини"},
+                {"Звери", "Районы Кварталы"},
+                {"А-студио", "Ещё люблю"},
+                {"Агата Кристи", "Я на тебе как на войне"},
+                {"После 11 / Хелависа", "Рядом быть"},
+                {"Ария", "Грязь"},
+                {"Ария", "Небо тебя найдет"},
+                {"Мармеладзе", "Стоша-говнозад"},
+                {"Сектор газа", "Колхозный панк"},
+                {"Сектор газа", "Ява"},
+                {"Машина времени", "Не стоит прогибаться"},
+                {"Машина времени", "Мой друг лучше всех играет Блюз"},
+                {"Сплин", "Орбит без сахара"},
+                {"Леприконсы", "Хали-Гали"},
+                {"Ария", "Беспечный ангел"},
+                {"Ария", "Потерянный рай"},
+                {"Ария", "Там высоко"},
+                {"Николай Носков", "Это здорово"},
+                {"Люмен", "Гореть"},
+                {"Сплин", "Выхода нет"}
+            };
+
+            for (String[] songData : sampleSongs) {
+                Song song = new Song(0, songData[0], songData[1], ""); // Empty lyrics
+                addSong(song);
+            }
+        }
     }
 }

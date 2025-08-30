@@ -42,6 +42,7 @@ public class MainActivity extends AppCompatActivity implements SongAdapter.OnSon
 
     private void setupDatabase() {
         databaseHelper = new DatabaseHelper(this);
+        databaseHelper.prepopulateIfEmpty();
     }
 
     private void setupRecyclerView() {
