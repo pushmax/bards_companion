@@ -39,6 +39,13 @@ public class PerformanceActivity extends AppCompatActivity implements Performanc
     private RecyclerView votingRecyclerView;
     private VotingResultAdapter votingResultAdapter;
     private Runnable votingUpdateRunnable;
+    
+    // Reactions display components
+    private CardView reactionsInfoCard;
+    private TextView reactionsStatusText;
+    private RecyclerView reactionsRecyclerView;
+    private ReactionResultAdapter reactionResultAdapter;
+    private Runnable reactionsUpdateRunnable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -50,10 +57,12 @@ public class PerformanceActivity extends AppCompatActivity implements Performanc
         setupServer();
         setupRecyclerView();
         setupVotingDisplay();
+        setupReactionsDisplay();
         setupClickListeners();
         loadSongs();
         startIpUpdates();
         startVotingUpdates();
+        startReactionsUpdates();
     }
 
     private void initViews() {
@@ -71,6 +80,11 @@ public class PerformanceActivity extends AppCompatActivity implements Performanc
         votingInfoCard = findViewById(R.id.votingInfoCard);
         votingStatusText = findViewById(R.id.votingStatusText);
         votingRecyclerView = findViewById(R.id.votingRecyclerView);
+        
+        // Reactions display views
+        reactionsInfoCard = findViewById(R.id.reactionsInfoCard);
+        reactionsStatusText = findViewById(R.id.reactionsStatusText);
+        reactionsRecyclerView = findViewById(R.id.reactionsRecyclerView);
     }
 
     private void setupDatabase() {
@@ -99,6 +113,12 @@ public class PerformanceActivity extends AppCompatActivity implements Performanc
         votingRecyclerView.setLayoutManager(new LinearLayoutManager(this));
         votingResultAdapter = new VotingResultAdapter();
         votingRecyclerView.setAdapter(votingResultAdapter);
+    }
+
+    private void setupReactionsDisplay() {
+        reactionsRecyclerView.setLayoutManager(new LinearLayoutManager(this));
+        reactionResultAdapter = new ReactionResultAdapter();
+        reactionsRecyclerView.setAdapter(reactionResultAdapter);
     }
 
     private void setupClickListeners() {
@@ -168,9 +188,26 @@ public class PerformanceActivity extends AppCompatActivity implements Performanc
         handler.post(votingUpdateRunnable);
     }
 
+    private void startReactionsUpdates() {
+        reactionsUpdateRunnable = new Runnable() {
+            @Override
+            public void run() {
+                updateReactionsDisplay();
+                handler.postDelayed(this, 2000); // Update every 2 seconds
+            }
+        };
+        handler.post(reactionsUpdateRunnable);
+    }
+
     private void stopVotingUpdates() {
         if (handler != null && votingUpdateRunnable != null) {
             handler.removeCallbacks(votingUpdateRunnable);
+        }
+    }
+
+    private void stopReactionsUpdates() {
+        if (handler != null && reactionsUpdateRunnable != null) {
+            handler.removeCallbacks(reactionsUpdateRunnable);
         }
     }
 
@@ -200,6 +237,44 @@ public class PerformanceActivity extends AppCompatActivity implements Performanc
                     votingStatusText.setText("1 vote received");
                 } else {
                     votingStatusText.setText(results.size() + " votes received");
+                }
+            }
+        }
+    }
+
+    private void updateReactionsDisplay() {
+        if (httpServer != null) {
+            Song currentSong = httpServer.getCurrentSong();
+            
+            // Only show reactions when a song is currently being performed
+            if (currentSong == null) {
+                reactionsInfoCard.setVisibility(android.view.View.GONE);
+                return;
+            }
+            
+            Map<String, Integer> reactionTotals = httpServer.getReactionTotalsForDisplay();
+            if (reactionTotals.isEmpty()) {
+                reactionsInfoCard.setVisibility(android.view.View.VISIBLE);
+                reactionsStatusText.setText("No reactions yet");
+                reactionResultAdapter.updateReactionResults(new ArrayList<>());
+            } else {
+                reactionsInfoCard.setVisibility(android.view.View.VISIBLE);
+                List<ReactionResultAdapter.ReactionResult> results = new ArrayList<>();
+                
+                for (Map.Entry<String, Integer> entry : reactionTotals.entrySet()) {
+                    results.add(new ReactionResultAdapter.ReactionResult(entry.getKey(), entry.getValue()));
+                }
+                
+                // Sort by reaction count descending
+                results.sort((a, b) -> Integer.compare(b.reactionCount, a.reactionCount));
+                
+                reactionResultAdapter.updateReactionResults(results);
+                
+                int totalReactions = results.stream().mapToInt(r -> r.reactionCount).sum();
+                if (totalReactions == 1) {
+                    reactionsStatusText.setText("1 reaction");
+                } else {
+                    reactionsStatusText.setText(totalReactions + " reactions");
                 }
             }
         }
@@ -236,6 +311,7 @@ public class PerformanceActivity extends AppCompatActivity implements Performanc
         }
         stopIpUpdates();
         stopVotingUpdates();
+        stopReactionsUpdates();
     }
 
     @Override

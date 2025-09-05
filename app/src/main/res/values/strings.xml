@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Bards Companion</string>
+    <string name="app_name">Bard\'s Companion</string>
     <string name="add_song">Add Song</string>
     <string name="edit_song">Edit Song</string>
     <string name="author">Author</string>

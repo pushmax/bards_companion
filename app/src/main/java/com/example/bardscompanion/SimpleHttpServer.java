@@ -35,6 +35,9 @@ public class SimpleHttpServer {
     // Voting system
     private final Map<String, Long> clientVotes = new ConcurrentHashMap<>(); // clientId -> songId
     
+    // Reactions system
+    private final Map<String, Map<String, Integer>> clientReactions = new ConcurrentHashMap<>(); // reactionType -> clientId -> count
+    
     private static SimpleHttpServer instance;
 
     public SimpleHttpServer(Context context) {
@@ -89,15 +92,26 @@ public class SimpleHttpServer {
     public static void clearCurrentSongStatic() {
         if (instance != null) {
             instance.setCurrentSong(null);
+            // Also clear reactions when song finishes
+            synchronized (instance.clientReactions) {
+                instance.clientReactions.clear();
+            }
         }
+    }
+
+    public static SimpleHttpServer getInstance() {
+        return instance;
     }
 
     public void setCurrentSong(Song song) {
         this.currentSong = song;
-        // Clear votes when a new song starts
+        // Clear votes and reactions when a new song starts
         if (song != null) {
             synchronized (clientVotes) {
                 clientVotes.clear();
+            }
+            synchronized (clientReactions) {
+                clientReactions.clear();
             }
         }
     }
@@ -138,6 +152,10 @@ public class SimpleHttpServer {
                     serveVotingState(path, clientIP, outputStream);
                 } else if (path.startsWith("/vote?")) {
                     handleVote(path, clientIP, outputStream);
+                } else if ("/reactions-state".equals(path)) {
+                    serveReactionsState(outputStream);
+                } else if (path.startsWith("/react?")) {
+                    handleReaction(path, clientIP, outputStream);
                 } else {
                     serve404(outputStream);
                 }
@@ -315,6 +333,81 @@ public class SimpleHttpServer {
         return getVoteCounts();
     }
 
+    private void serveReactionsState(OutputStream outputStream) throws IOException {
+        Map<String, Integer> reactionTotals = getReactionTotals();
+        String jsonResponse = gson.toJson(reactionTotals);
+        
+        String response = "HTTP/1.1 200 OK\r\n" +
+                "Content-Type: application/json; charset=UTF-8\r\n" +
+                "Content-Length: " + jsonResponse.getBytes(StandardCharsets.UTF_8).length + "\r\n" +
+                "Access-Control-Allow-Origin: *\r\n" +
+                "Connection: close\r\n" +
+                "\r\n" + jsonResponse;
+        outputStream.write(response.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private void handleReaction(String path, String clientIP, OutputStream outputStream) throws IOException {
+        try {
+            // Extract clientId and reactionType from query parameters: /react?clientId=abc&reaction=heart
+            String query = path.substring(path.indexOf('?') + 1);
+            String[] params = query.split("&");
+            String clientId = null;
+            String reactionType = null;
+            
+            for (String param : params) {
+                if (param.startsWith("clientId=")) {
+                    clientId = param.substring(9);
+                } else if (param.startsWith("reaction=")) {
+                    reactionType = param.substring(9);
+                }
+            }
+            
+            if (clientId != null && reactionType != null && isValidReaction(reactionType)) {
+                synchronized (clientReactions) {
+                    clientReactions.computeIfAbsent(reactionType, k -> new ConcurrentHashMap<>());
+                    Map<String, Integer> reactionClients = clientReactions.get(reactionType);
+                    reactionClients.put(clientId, reactionClients.getOrDefault(clientId, 0) + 1);
+                }
+                
+                String jsonResponse = "{\"success\": true, \"message\": \"Reaction recorded\"}";
+                String response = "HTTP/1.1 200 OK\r\n" +
+                        "Content-Type: application/json; charset=UTF-8\r\n" +
+                        "Content-Length: " + jsonResponse.getBytes(StandardCharsets.UTF_8).length + "\r\n" +
+                        "Access-Control-Allow-Origin: *\r\n" +
+                        "Connection: close\r\n" +
+                        "\r\n" + jsonResponse;
+                outputStream.write(response.getBytes(StandardCharsets.UTF_8));
+            } else {
+                serveBadRequest(outputStream);
+            }
+        } catch (Exception e) {
+            serveBadRequest(outputStream);
+        }
+    }
+
+    private boolean isValidReaction(String reactionType) {
+        return reactionType.equals("panties") || reactionType.equals("heart") || 
+               reactionType.equals("tomato") || reactionType.equals("vomit");
+    }
+
+    private Map<String, Integer> getReactionTotals() {
+        Map<String, Integer> totals = new ConcurrentHashMap<>();
+        synchronized (clientReactions) {
+            for (Map.Entry<String, Map<String, Integer>> reactionEntry : clientReactions.entrySet()) {
+                String reactionType = reactionEntry.getKey();
+                int total = reactionEntry.getValue().values().stream().mapToInt(Integer::intValue).sum();
+                if (total > 0) {
+                    totals.put(reactionType, total);
+                }
+            }
+        }
+        return totals;
+    }
+
+    public Map<String, Integer> getReactionTotalsForDisplay() {
+        return getReactionTotals();
+    }
+
     private void serve404(OutputStream outputStream) throws IOException {
         String html = "<html><body><h1>404 Not Found</h1></body></html>";
         String response = "HTTP/1.1 404 Not Found\r\n" +
@@ -330,11 +423,17 @@ public class SimpleHttpServer {
                  "<head>\n" +
                  "    <meta charset=\"UTF-8\">\n" +
                  "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-                 "    <title>Bards Companion - Client</title>\n" +
+                 "    <title>Bard's Companion</title>\n" +
                  "    <style>\n" +
-                 "        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5; display: flex; flex-direction: column; min-height: 100vh; }\n" +
+                 "        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; padding-bottom: 200px; background-color: #f5f5f5; display: flex; flex-direction: column; min-height: 100vh; }\n" +
                  "        .container { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }\n" +
                  "        .song-container { background: white; border-radius: 8px; padding: 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 800px; width: 100%; margin-bottom: 24px; }\n" +
+                 "        .reactions-container { position: fixed; bottom: 0; left: 0; right: 0; background: white; box-shadow: 0 -4px 10px rgba(0,0,0,0.1); z-index: 1000; border-top: 1px solid #e0e0e0; transition: transform 0.3s ease, padding 0.3s ease; }\n" +
+                 "        .reactions-container.collapsed { transform: translateY(calc(100% - 40px)); }\n" +
+                 "        .reactions-toggle { display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 12px; background: #f0f0f0; font-size: 0.9em; font-weight: bold; color: #666; user-select: none; }\n" +
+                 "        .reactions-toggle:hover { background: #e0e0e0; }\n" +
+                 "        .reactions-content { transition: opacity 0.3s ease, max-height 0.3s ease; overflow: hidden; padding-top: 8px; }\n" +
+                 "        .reactions-container.collapsed .reactions-content { opacity: 0; max-height: 0; }\n" +
                  "        .voting-container { background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 800px; width: 100%; margin-bottom: 20px; }\n" +
                  "        .song-title { font-size: 2.5em; color: #333; margin-bottom: 10px; }\n" +
                  "        .song-author { font-size: 1.5em; color: #666; margin-bottom: 30px; }\n" +
@@ -354,12 +453,38 @@ public class SimpleHttpServer {
                  "        .vote-button { background: #4CAF50; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8em; }\n" +
                  "        .current-vote { font-style: italic; color: #4CAF50; font-size: 0.8em; }\n" +
                  "        .vote-disabled { color: #999; font-size: 0.8em; font-style: italic; }\n" +
+                 "        .reactions-panel { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }\n" +
+                 "        .reaction-button { background: linear-gradient(135deg, #ff6b6b, #ee5a24); color: white; border: none; padding: 8px 12px; border-radius: 20px; cursor: pointer; font-size: 0.9em; font-weight: bold; box-shadow: 0 2px 8px rgba(238, 90, 36, 0.3); transition: all 0.3s ease; min-width: 100px; display: flex; align-items: center; justify-content: center; gap: 6px; }\n" +
+                 "        .reaction-button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(238, 90, 36, 0.4); }\n" +
+                 "        .reaction-button.heart { background: linear-gradient(135deg, #ff6b9d, #ff1744); box-shadow: 0 4px 15px rgba(255, 23, 68, 0.3); }\n" +
+                 "        .reaction-button.heart:hover { box-shadow: 0 6px 20px rgba(255, 23, 68, 0.4); }\n" +
+                 "        .reaction-button.tomato { background: linear-gradient(135deg, #ff4757, #c44569); box-shadow: 0 4px 15px rgba(196, 69, 105, 0.3); }\n" +
+                 "        .reaction-button.tomato:hover { box-shadow: 0 6px 20px rgba(196, 69, 105, 0.4); }\n" +
+                 "        .reaction-button.vomit { background: linear-gradient(135deg, #2ecc71, #27ae60); box-shadow: 0 4px 15px rgba(46, 204, 113, 0.3); }\n" +
+                 "        .reaction-button.vomit:hover { box-shadow: 0 6px 20px rgba(46, 204, 113, 0.4); }\n" +
+                 "        .reaction-counts { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 6px; }\n" +
+                 "        .reaction-count { background: #f8f9fa; padding: 4px 8px; border-radius: 12px; font-size: 0.8em; color: #495057; display: flex; align-items: center; gap: 4px; border: 1px solid #e9ecef; }\n" +
+                 "        .reactions-header { font-size: 1em; font-weight: bold; color: #333; margin-bottom: 6px; text-align: center; }\n" +
                  "        @media (max-width: 600px) { .song-title { font-size: 2em; } .song-author { font-size: 1.2em; } .song-lyrics { font-size: 1em; } .song-container, .voting-container { padding: 20px; } .song-item { flex-direction: column; align-items: flex-start; gap: 8px; } .vote-info { align-self: flex-end; } }\n" +
                  "    </style>\n" +
                  "</head>\n" +
                  "<body>\n" +
                  "    <div class=\"status\" id=\"status\">Connected</div>\n" +
                  "    <div class=\"container\">\n" +
+                 "        <div class=\"reactions-container\" id=\"reactionsContainer\" style=\"display: none;\">\n" +
+                 "            <div class=\"reactions-toggle\" onclick=\"toggleReactions()\" id=\"reactionsToggle\">\n" +
+                 "                🎭 Reactions ▼\n" +
+                 "            </div>\n" +
+                 "            <div class=\"reactions-content\" id=\"reactionsContent\">\n" +
+                 "                <div class=\"reactions-panel\">\n" +
+                 "                    <button class=\"reaction-button panties\" onclick=\"sendReaction('panties')\">👙 Throw panties!</button>\n" +
+                 "                    <button class=\"reaction-button heart\" onclick=\"sendReaction('heart')\">❤️ Give heart</button>\n" +
+                 "                    <button class=\"reaction-button tomato\" onclick=\"sendReaction('tomato')\">🍅 Throw a tomato!</button>\n" +
+                 "                    <button class=\"reaction-button vomit\" onclick=\"sendReaction('vomit')\">🤮 VOMIT!</button>\n" +
+                 "                </div>\n" +
+                 "                <div class=\"reaction-counts\" id=\"reactionCounts\"></div>\n" +
+                 "            </div>\n" +
+                 "        </div>\n" +
                  "        <div class=\"song-container\" id=\"songContainer\">\n" +
                  "            <div class=\"waiting\" id=\"waitingMessage\">Waiting for the performer to select a song...</div>\n" +
                  "            <div id=\"songContent\" style=\"display: none;\">\n" +
@@ -377,11 +502,12 @@ public class SimpleHttpServer {
                  "    <script>\n" +
                  "        const clientId = localStorage.getItem('clientId') ?? 'client_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);\n" +
                  "        localStorage.setItem('clientId', clientId); " + 
-                 "        let currentSong = undefined, availableSongs = [], votingState = {}, votedSong = null, pollInterval, isVoting = false;\n" +
+                 "        let currentSong = undefined, availableSongs = [], votingState = {}, votedSong = null, pollInterval, isVoting = false, reactions = {}, isReacting = false;\n" +
                  "        function updateDisplay(song) {\n" +
                  "            const waitingMessage = document.getElementById('waitingMessage');\n" +
                  "            const songContent = document.getElementById('songContent');\n" +
                  "            const votingContainer = document.getElementById('votingContainer');\n" +
+                 "            const reactionsContainer = document.getElementById('reactionsContainer');\n" +
                  "            if (song && song !== null) {\n" +
                  "                document.getElementById('songTitle').textContent = song.name;\n" +
                  "                document.getElementById('songAuthor').textContent = 'by ' + song.author;\n" +
@@ -389,10 +515,13 @@ public class SimpleHttpServer {
                  "                waitingMessage.style.display = 'none';\n" +
                  "                songContent.style.display = 'block';\n" +
                  "                votingContainer.style.display = 'none';\n" +
+                 "                reactionsContainer.style.display = 'block';\n" +
+                 "                loadReactions();\n" +
                  "            } else {\n" +
                  "                waitingMessage.style.display = 'block';\n" +
                  "                songContent.style.display = 'none';\n" +
                  "                votingContainer.style.display = 'block';\n" +
+                 "                reactionsContainer.style.display = 'none';\n" +
                  "                loadAvailableSongs(); loadVotingState();\n" +
                  "            }\n" +
                  "        }\n" +
@@ -414,6 +543,10 @@ public class SimpleHttpServer {
                  "        }\n" +
                  "function setVotedSong(value) { votedSong = value; }" +
                  "        function voteForSong(songId) { if (isVoting) return; isVoting = true; fetch('/vote?clientId=' + clientId + '&songId=' + songId).then(r => r.json()).then(result => { if (result.success) { setVotedSong(songId); loadVotingState(); } else { console.log('Vote rejected:', result.message); } isVoting = false; }).catch(e => { console.error(e); isVoting = false; }); }\n" +
+                 "        function sendReaction(reactionType) { if (isReacting) return; isReacting = true; fetch('/react?clientId=' + clientId + '&reaction=' + reactionType).then(r => r.json()).then(result => { if (result.success) { loadReactions(); } else { console.log('Reaction failed:', result.message); } isReacting = false; }).catch(e => { console.error(e); isReacting = false; }); }\n" +
+                 "        function toggleReactions() { const container = document.getElementById('reactionsContainer'); const toggle = document.getElementById('reactionsToggle'); const isCollapsed = container.classList.contains('collapsed'); if (isCollapsed) { container.classList.remove('collapsed'); toggle.innerHTML = '🎭 Reactions ▼'; } else { container.classList.add('collapsed'); toggle.innerHTML = '🎭 Reactions ▲'; } }\n" +
+                 "        function loadReactions() { fetch('/reactions-state').then(r => r.json()).then(reactionData => { reactions = reactionData; updateReactionCounts(); }).catch(console.error); }\n" +
+                 "        function updateReactionCounts() { const reactionCounts = document.getElementById('reactionCounts'); const reactionsContainer = document.getElementById('reactionsContainer'); const reactionTypes = { panties: '👙', heart: '❤️', tomato: '🍅', vomit: '🤮' }; const reactionNames = { panties: 'Panties', heart: 'Hearts', tomato: 'Tomatoes', vomit: 'Vomits' }; const filteredReactions = Object.entries(reactions).filter(([type, count]) => count > 0); reactionCounts.innerHTML = filteredReactions.map(([type, count]) => '<div class=\"reaction-count\">' + reactionTypes[type] + ' <strong>' + count + '</strong></div>').join(''); }\n" +
                  "        function pollCurrentSong() {\n" +
                  "            fetch('/current-song').then(r => r.json()).then(song => {\n" +
                  "                if (JSON.stringify(song) !== JSON.stringify(currentSong)) {\n" +
@@ -427,7 +560,7 @@ public class SimpleHttpServer {
                  "                document.getElementById('status').style.backgroundColor = '#f44336';\n" +
                  "            });\n" +
                  "        }\n" +
-                 "        updateDisplay(null); pollCurrentSong(); pollInterval = setInterval(pollCurrentSong, 2000); setInterval(loadVotingState, 2000);\n" +
+                 "        updateDisplay(null); pollCurrentSong(); pollInterval = setInterval(pollCurrentSong, 2000); setInterval(loadVotingState, 2000); setInterval(loadReactions, 2000);\n" +
                  "        window.addEventListener('beforeunload', () => { if (pollInterval) clearInterval(pollInterval); });\n" +
                  "    </script>\n" +
                  "</body></html>";

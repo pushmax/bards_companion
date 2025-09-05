@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Bards Companion"
+rootProject.name = "Bard\'s Companion"
 include ':app'
